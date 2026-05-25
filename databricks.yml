@@ -45,6 +45,7 @@ targets:
     variables:
       alert_email: "data-engineering@finpay.com"
       schedule_pause_status: "UNPAUSED"  # Jobs activos en prod
+      sql_warehouse_id: "785219978d976756"
 
     # Permisos de producción
     permissions:

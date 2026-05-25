@@ -20,15 +20,6 @@ resources:
         on_success:
           - ${var.alert_email}
 
-      # Política de cluster compartida
-      job_clusters:
-        - job_cluster_key: etl_cluster
-          new_cluster:
-            num_workers: 2
-            spark_version: 15.4.x-scala2.12
-            node_type_id: Standard_DS3_v2
-            spark_conf:
-              spark.databricks.delta.optimizeWrite.enabled: "true"
 
       tasks:
         # Tarea 1: ejecutar el pipeline DLT (Bronze → Silver → Gold)
