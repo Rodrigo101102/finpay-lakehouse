@@ -1,0 +1,7 @@
+resources:
+  dashboards:
+    finpay_observability_dashboard:
+      display_name: "FinPay Observabilidad"
+      warehouse_id: ${var.sql_warehouse_id}
+      serialized_dashboard: ../dashboard/observability.lvdash.json
+      embed_credentials: false

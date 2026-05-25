@@ -1,0 +1,25 @@
+resources:
+  jobs:
+    finpay_semantic_job:
+      name: finpay_semantic_job
+      description: "Job 2 — Refresca el modelo dimensional (vistas materializadas Gold) sobre SQL Warehouse"
+
+      max_concurrent_runs: 1
+
+      email_notifications:
+        on_failure:
+          - ${var.alert_email}
+
+      tasks:
+        # sql_task ejecuta el archivo .sql directamente sobre el SQL Warehouse.
+        # Esta es la forma correcta: NO usa cluster genérico ni serverless compute.
+        # Los CREATE/REFRESH MATERIALIZED VIEW requieren SQL Warehouse como compute.
+        - task_key: refresh_materialized_views
+          sql_task:
+            file:
+              path: ${workspace.root_path}/files/notebooks/02_refresh_materialized_views.sql
+              source: WORKSPACE
+            warehouse_id: ${var.sql_warehouse_id}
+          timeout_seconds: 1800
+          max_retries: 1
+          min_retry_interval_millis: 120000

@@ -1,0 +1,58 @@
+bundle:
+  name: finpay-lakehouse
+
+# Variables globales
+variables:
+  alert_email:
+    description: "Email para alertas de fallos de pipeline y jobs"
+    default: "data-engineering@finpay.com"
+
+  sql_warehouse_id:
+    description: "ID del SQL Warehouse para el modelo semántico"
+
+  schedule_pause_status:
+    description: "Estado de la programación: PAUSED o UNPAUSED"
+    default: "PAUSED"
+
+# Incluir todos los recursos del bundle
+include:
+  - resources/*.yml
+
+# Targets de despliegue
+targets:
+
+  # ── Desarrollo ─────────────────────────────────────────────────────────────
+  dev:
+    mode: development
+    default: true
+    workspace:
+      root_path: ~/.bundle/${bundle.name}/${bundle.target}
+
+    variables:
+      alert_email: "dev-team@finpay.com"
+      schedule_pause_status: "PAUSED"   # Jobs pausados en dev por defecto
+      sql_warehouse_id: "785219978d976756"
+
+    # En dev, los recursos se prefijan automáticamente con [dev <user>]
+    # para evitar colisiones con otros desarrolladores
+
+  # ── Producción ─────────────────────────────────────────────────────────────
+  prod:
+    mode: production
+    workspace:
+      root_path: ~/.bundle/${bundle.name}/${bundle.target}
+
+    variables:
+      alert_email: "data-engineering@finpay.com"
+      schedule_pause_status: "UNPAUSED"  # Jobs activos en prod
+
+    # Permisos de producción
+    permissions:
+      - user_name: rodrigo050318@hotmail.com
+        level: CAN_MANAGE
+      - group_name: ingenieria
+        level: CAN_MANAGE
+      - group_name: riesgo
+        level: CAN_VIEW
+      - group_name: auditoria
+        level: CAN_VIEW

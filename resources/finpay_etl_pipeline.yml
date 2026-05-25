@@ -1,0 +1,44 @@
+resources:
+  pipelines:
+    finpay_etl_pipeline:
+      name: finpay_etl_pipeline
+      target: fintech_finpay
+      catalog: fintech_finpay
+
+      # Event logs → observability schema
+      event_log:
+        catalog: fintech_finpay
+        schema: observability
+        name: finpay_etl_pipeline_event_log
+
+      # Uso obligatorio de serverless de acuerdo a las políticas de tu workspace
+      serverless: true
+
+      # Pipeline libraries: Bronze, Silver, Gold
+      libraries:
+        - notebook:
+            path: ${workspace.root_path}/files/src/bronze.py
+        - notebook:
+            path: ${workspace.root_path}/files/src/silver.py
+        - notebook:
+            path: ${workspace.root_path}/files/src/gold.py
+
+      # Modo batch con trigger availableNow
+      continuous: false
+      development: false
+
+      # Canales de configuración
+      channel: PREVIEW
+
+      configuration:
+        catalog: fintech_finpay
+        volume_path: /Volumes/fintech_finpay/default/vol_landing
+        archetypes_path: /Volumes/fintech_finpay/default/vol_landing/metadata/ingestion_archetypes.json
+
+      # Notificaciones por email ante fallos
+      notifications:
+        - email_recipients:
+            - ${var.alert_email}
+          alerts:
+            - on-update-fatal-failure
+            - on-update-failure

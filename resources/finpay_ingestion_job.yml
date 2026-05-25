@@ -1,0 +1,51 @@
+resources:
+  jobs:
+    finpay_ingestion_job:
+      name: finpay_ingestion_job
+      description: "Job 1 — Orquesta la ejecución completa del Lakeflow Pipeline ETL (Bronze → Silver → Gold)"
+
+      # Programación: cada hora en prod, manual en dev
+      schedule:
+        quartz_cron_expression: "0 0 * * * ?"   # cada hora
+        timezone_id: America/Lima
+        pause_status: ${var.schedule_pause_status}
+
+      # Política de reintentos
+      max_concurrent_runs: 1
+
+      # Notificaciones
+      email_notifications:
+        on_failure:
+          - ${var.alert_email}
+        on_success:
+          - ${var.alert_email}
+
+      # Política de cluster compartida
+      job_clusters:
+        - job_cluster_key: etl_cluster
+          new_cluster:
+            num_workers: 2
+            spark_version: 15.4.x-scala2.12
+            node_type_id: Standard_DS3_v2
+            spark_conf:
+              spark.databricks.delta.optimizeWrite.enabled: "true"
+
+      tasks:
+        # Tarea 1: ejecutar el pipeline DLT (Bronze → Silver → Gold)
+        - task_key: run_etl_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.finpay_etl_pipeline.id}
+            full_refresh: false
+          timeout_seconds: 3600
+          retry_on_timeout: true
+          max_retries: 2
+          min_retry_interval_millis: 300000   # 5 minutos entre reintentos
+
+        # Tarea 2: disparar el Job semántico SOLO si el pipeline ETL tuvo éxito.
+        # run_job_task referencia finpay_semantic_job como job independiente.
+        # La dependencia es garantizada a nivel de código — no por offset de cron.
+        - task_key: trigger_semantic_refresh
+          depends_on:
+            - task_key: run_etl_pipeline
+          run_job_task:
+            job_id: ${resources.jobs.finpay_semantic_job.id}
