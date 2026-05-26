@@ -1,3 +1,4 @@
+# Databricks notebook source
 """
 gold.py — Agregaciones Gold: KPIs de riesgo, tasas de reversa, score de riesgo y alertas.
 FinPay Lakehouse · Azure Databricks
@@ -15,8 +16,7 @@ from utils import compute_risk_score, CATALOG
 # ============================================================================
 
 @dlt.table(
-    name="transactions_kpis",
-    schema=f"{CATALOG}.gold",
+    name="gold_transactions_kpis",
     comment="KPIs diarios de transacciones por comercio, canal y tipo — Gold layer",
     table_properties={
         "delta.enableChangeDataFeed": "true",
@@ -25,7 +25,7 @@ from utils import compute_risk_score, CATALOG
     }
 )
 def gold_transactions_kpis():
-    txn = dlt.read(f"{CATALOG}.silver.transactions")
+    txn = dlt.read("silver_transactions")
 
     # KPIs base por comercio + canal + fecha + tipo
     kpis = txn.groupBy(
@@ -77,8 +77,7 @@ def gold_transactions_kpis():
 # ============================================================================
 
 @dlt.table(
-    name="merchant_summary",
-    schema=f"{CATALOG}.gold",
+    name="gold_merchant_summary",
     comment="Resumen acumulado de riesgo por comercio — Gold layer",
     table_properties={
         "delta.enableChangeDataFeed": "true",
@@ -86,8 +85,8 @@ def gold_transactions_kpis():
     }
 )
 def gold_merchant_summary():
-    txn = dlt.read(f"{CATALOG}.silver.transactions")
-    mer = dlt.read(f"{CATALOG}.silver.merchants")
+    txn = dlt.read("silver_transactions")
+    mer = dlt.read("silver_merchants")
 
     # Ventana de últimos 7 días desde la fecha más reciente disponible
     max_date = txn.agg(F.max("transaction_date")).collect()[0][0]
@@ -136,8 +135,7 @@ def gold_merchant_summary():
 # ============================================================================
 
 @dlt.table(
-    name="fraud_alerts",
-    schema=f"{CATALOG}.gold",
+    name="gold_fraud_alerts",
     comment="Alertas de fraude: comercios con score_riesgo > 60 o tasa_reversa > 0.30 — Gold layer",
     table_properties={
         "delta.enableChangeDataFeed": "true",
@@ -151,7 +149,7 @@ def gold_fraud_alerts():
     - tasa_reversa  > 0.30 (más del 30% de transacciones son reversas)
     - reversas_sin_ref > 0 (reversas sin transacción original — potencial fraude)
     """
-    kpis = dlt.read(f"{CATALOG}.gold.transactions_kpis")
+    kpis = dlt.read("gold_transactions_kpis")
 
     alerts = kpis.filter(
         (F.col("score_riesgo") > 60) |

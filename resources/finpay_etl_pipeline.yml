@@ -1,7 +1,7 @@
 resources:
   pipelines:
-    finpay_etl_pipeline:
-      name: finpay_etl_pipeline
+    finpay_etl_pipeline_v2:
+      name: finpay_etl_pipeline_v2
       target: fintech_finpay
       catalog: fintech_finpay
 
@@ -14,14 +14,18 @@ resources:
       # Uso obligatorio de serverless de acuerdo a las políticas de tu workspace
       serverless: true
 
+      # Preservar el run_as requerido por el workspace
+      run_as:
+        user_name: rodrigo050318@hotmail.com
+
       # Pipeline libraries: Bronze, Silver, Gold
       libraries:
         - notebook:
-            path: ${workspace.root_path}/files/src/bronze.py
+            path: ${workspace.root_path}/files/src/bronze
         - notebook:
-            path: ${workspace.root_path}/files/src/silver.py
+            path: ${workspace.root_path}/files/src/silver
         - notebook:
-            path: ${workspace.root_path}/files/src/gold.py
+            path: ${workspace.root_path}/files/src/gold
 
       # Modo batch con trigger availableNow
       continuous: false

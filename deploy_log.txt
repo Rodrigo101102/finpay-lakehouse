@@ -1,0 +1,13 @@
+Uploading bundle files to /Workspace/Users/rodrigo050318@hotmail.com/.bundle/finpay-lakehouse/prod/files...
+Deploying resources...
+Error: terraform apply: exit status 1
+
+Error: cannot update pipeline: Changing target schema is not allowed. Reason: DLT does not yet support changing target schema of a pipeline that uses an Default Storage catalog. Please create a new pipeline if you need to change the target schema..
+
+  with databricks_pipeline.finpay_etl_pipeline,
+  on bundle.tf.json line 248, in resource.databricks_pipeline.finpay_etl_pipeline:
+ 248:       }
+
+
+
+Updating deployment state...

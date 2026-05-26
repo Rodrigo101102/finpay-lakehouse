@@ -64,10 +64,12 @@ def get_archetype(archetypes: list[dict], source_name: str) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 def add_audit_columns(df: DataFrame, source_name: str) -> DataFrame:
     """Añade columnas técnicas estándar de auditoría para Bronze."""
+    # En Unity Catalog / DLT, input_file_name() no es compatible.
+    # Se debe usar la columna oculta _metadata.
     return (
         df
         .withColumn("_source_name",    F.lit(source_name))
-        .withColumn("_source_file",    F.input_file_name())
+        .withColumn("_source_file",    F.col("_metadata.file_path"))
         .withColumn("_ingestion_ts",   F.current_timestamp())
         .withColumn("_pipeline_run_id", F.expr("uuid()"))
     )

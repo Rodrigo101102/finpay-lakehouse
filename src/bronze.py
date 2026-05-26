@@ -1,63 +1,71 @@
+# Databricks notebook source
 """
-bronze.py — Ingesta Bronze metadata-driven con Lakeflow Declarative Pipelines.
-Reto 1: Lee ingestion_archetypes.json y orquesta dinámicamente cada fuente.
+bronze.py — Ingesta Bronze 100% metadata-driven con Lakeflow Declarative Pipelines.
+Reto 1: Lee ingestion_archetypes.json y crea las tablas Bronze dinámicamente.
+
+Patrón: por cada arquetipo activo en el JSON se genera un @dlt.table automáticamente.
+Para agregar una nueva fuente, solo añadir una entrada al JSON — sin modificar este código.
+
 FinPay Lakehouse · Azure Databricks
 """
 
 import dlt
 from pyspark.sql import functions as F
-from pyspark.sql.types import StructType, StructField, StringType
 
 from utils import (
     load_archetypes,
-    get_archetype,
     add_audit_columns,
-    CATALOG,
     VOLUME_PATH,
     ARCHETYPES_PATH,
 )
 
 # ---------------------------------------------------------------------------
-# Cargar arquetipos al inicio del pipeline
+# Cargar arquetipos al inicio del pipeline (solo fuentes activas)
 # ---------------------------------------------------------------------------
 _archetypes = load_archetypes(spark, ARCHETYPES_PATH)
 
 
 # ---------------------------------------------------------------------------
-# Helper: leer fuente con Auto Loader según arquetipo
+# Helper: construir el reader de Auto Loader según el arquetipo
 # ---------------------------------------------------------------------------
 def _read_autoloader(archetype: dict):
     """
-    Construye un DataFrame de Auto Loader (cloudFiles) según el arquetipo.
-    Soporta CSV, JSON y texto delimitado (TXT/pipe).
+    Lee una fuente con Auto Loader (cloudFiles) usando las propiedades del arquetipo.
+
+    Formatos soportados:
+      - csv   → CSV estándar con delimitador y header configurables
+      - text  → TXT con delimitador pipe (|); se trata internamente como CSV
+      - json  → JSON multilínea o línea a línea
     """
     fmt        = archetype["file_format"].lower()
     src_path   = archetype["source_path"]
-    schema_loc = archetype.get("schema_location", f"{VOLUME_PATH}/metadata/checkpoints/{archetype['source_name']}_schema")
+    schema_loc = archetype.get(
+        "schema_location",
+        f"{VOLUME_PATH}/metadata/checkpoints/{archetype['source_name']}_schema"
+    )
+
+    # Los archivos TXT con delimitador pipe se leen igual que CSV
+    cloud_fmt = "csv" if fmt == "text" else fmt
+    delimiter = archetype.get("delimiter") or ","
+    header    = str(archetype.get("header", True)).lower()
 
     reader = (
         spark.readStream
         .format("cloudFiles")
-        .option("cloudFiles.format", fmt)
-        .option("cloudFiles.schemaLocation", schema_loc)
-        .option("cloudFiles.inferColumnTypes", "true")
+        .option("cloudFiles.format",              cloud_fmt)
+        .option("cloudFiles.schemaLocation",      schema_loc)
+        .option("cloudFiles.inferColumnTypes",    "true")
         .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
     )
 
-    if fmt == "csv":
-        delimiter = archetype.get("delimiter", ",") or ","
-        header    = str(archetype.get("header", True)).lower()
+    if cloud_fmt == "csv":
         reader = (
             reader
-            .option("sep", delimiter)
-            .option("header", header)
+            .option("sep",       delimiter)
+            .option("header",    header)
             .option("multiLine", "false")
-            .option("encoding", "UTF-8")
+            .option("encoding",  "UTF-8")
         )
-
-    elif fmt == "text":
-        # Archivos .txt con delimitador pipe — se leen como líneas y se parsean
-        reader = reader.option("wholeText", "false")
 
     # JSON no requiere opciones adicionales para Auto Loader
 
@@ -65,101 +73,36 @@ def _read_autoloader(archetype: dict):
 
 
 # ---------------------------------------------------------------------------
-# Bronze: transactions
+# Creación dinámica de tablas Bronze desde los arquetipos
 # ---------------------------------------------------------------------------
-@dlt.table(
-    name="transactions",
-    schema=f"{CATALOG}.bronze",
-    comment="Ingesta raw de transacciones CSV desde vol_landing/transactions/",
-    table_properties={
-        "delta.enableChangeDataFeed": "true",
-        "quality": "bronze",
-        "pipelines.autoOptimize.managed": "true"
-    }
-)
-def bronze_transactions():
-    archetype = get_archetype(_archetypes, "transactions")
-    df = _read_autoloader(archetype)
-    return add_audit_columns(df, "transactions")
-
-
-# ---------------------------------------------------------------------------
-# Bronze: merchants
-# ---------------------------------------------------------------------------
-@dlt.table(
-    name="merchants",
-    schema=f"{CATALOG}.bronze",
-    comment="Ingesta raw de comercios JSON desde vol_landing/merchants/",
-    table_properties={
-        "delta.enableChangeDataFeed": "true",
-        "quality": "bronze"
-    }
-)
-def bronze_merchants():
-    archetype = get_archetype(_archetypes, "merchants")
-    df = _read_autoloader(archetype)
-    return add_audit_columns(df, "merchants")
-
-
-# ---------------------------------------------------------------------------
-# Bronze: users  (TXT con delimitador |)
+# Por cada fuente activa en ingestion_archetypes.json se registra un @dlt.table.
+# Para añadir una nueva fuente mañana: solo agregar la entrada al JSON.
 # ---------------------------------------------------------------------------
 
-# Esquema fijo para el archivo de usuarios
-_USERS_SCHEMA = StructType([
-    StructField("user_id",           StringType(), True),
-    StructField("full_name",         StringType(), True),
-    StructField("document_id",       StringType(), True),
-    StructField("email",             StringType(), True),
-    StructField("phone",             StringType(), True),
-    StructField("country",           StringType(), True),
-    StructField("segment",           StringType(), True),
-    StructField("registration_date", StringType(), True),
-])
+def _make_bronze_table(arch: dict):
+    """Fábrica de tablas Bronze: registra un @dlt.table para el arquetipo dado."""
 
-_USERS_COLS = [f.name for f in _USERS_SCHEMA.fields]
-
-
-@dlt.table(
-    name="users",
-    schema=f"{CATALOG}.bronze",
-    comment="Ingesta raw de usuarios TXT (pipe-delimited) desde vol_landing/users/",
-    table_properties={
-        "delta.enableChangeDataFeed": "true",
-        "quality": "bronze"
-    }
-)
-def bronze_users():
-    archetype  = get_archetype(_archetypes, "users")
-    src_path   = archetype["source_path"]
-    delimiter  = archetype.get("delimiter", "|")
-    schema_loc = archetype.get(
-        "schema_location",
-        f"{VOLUME_PATH}/metadata/checkpoints/users_schema"
+    @dlt.table(
+        name=f"bronze_{arch['source_name']}",
+        comment=(
+            f"Ingesta raw de '{arch['source_name']}' "
+            f"({arch['file_format'].upper()}) desde {arch['source_path']}"
+        ),
+        table_properties={
+            "delta.enableChangeDataFeed":          "true",
+            "quality":                             "bronze",
+            "pipelines.autoOptimize.managed":      "true",
+            "source_name":                         arch["source_name"],
+            "file_format":                         arch["file_format"],
+        }
     )
+    def _bronze_table():
+        df = _read_autoloader(arch)
+        return add_audit_columns(df, arch["source_name"])
 
-    # Leer como líneas de texto
-    raw = (
-        spark.readStream
-        .format("cloudFiles")
-        .option("cloudFiles.format", "text")
-        .option("cloudFiles.schemaLocation", schema_loc)
-        .load(src_path)
-    )
+    return _bronze_table
 
-    # Parsear líneas: separar cabecera y datos en runtime
-    # Filtrar línea de cabecera detectada por patrón del primer campo
-    df_parsed = (
-        raw
-        .filter(~F.col("value").startswith("user_id"))   # excluir cabecera
-        .filter(F.col("value").isNotNull())
-        .filter(F.trim(F.col("value")) != "")
-        .select(
-            *[
-                F.split(F.col("value"), r"\|").getItem(i).alias(col)
-                for i, col in enumerate(_USERS_COLS)
-            ]
-        )
-    )
 
-    return add_audit_columns(df_parsed, "users")
+# Iterar sobre todos los arquetipos activos y registrar sus tablas
+for _arch in _archetypes:
+    _make_bronze_table(_arch)
